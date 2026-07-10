@@ -16,7 +16,10 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path
+from myapp import views
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # 기본 주소(http://127.0.0.1:8000/)로 접속하면 dashboard 함수를 실행합니다.
+    path('', views.dashboard, name='dashboard'),
 ]

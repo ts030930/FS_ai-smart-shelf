@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 스마트 매대 대시보드</title>
+    <!-- 데이터 시각화를 위한 Chart.js 로드 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .section { background: white; padding: 20px; border-radius: 10px; margin-bottom: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        /* 1. 매대 배치도 스타일 (CSS Grid 활용) */
+        .store-layout { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+        .shelf { background: #e9ecef; border: 2px solid #dee2e6; border-radius: 8px; padding: 20px; text-align: center; cursor: pointer; transition: 0.3s; }
+        .shelf:hover { background: #cfe2ff; border-color: #0d6efd; }
+        
+        /* 2. 통계 카드 스타일 */
+        .stats-grid { display: flex; gap: 15px; justify-content: space-between; }
+        .stat-card { flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px; text-align: center; }
+        .stat-card h3 { margin: 0 0 10px 0; font-size: 14px; color: #6c757d; }
+        .stat-card p { margin: 0; font-size: 24px; font-weight: bold; color: #212529; }
+
+        /* 3. 액션 버튼 스타일 */
+        .btn-coss { background-color: #198754; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
+        .btn-coss:hover { background-color: #157347; }
+        .llm-insight { background: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ffeeba; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>🛒 AI 스마트 매대 대시보드</h2>
+
+    <!-- [프론트 요구사항 1] 매대 배치 인식 시키기 (미니맵 역할) -->
+    <div class="section">
+        <h3>📍 현재 매대 배치도</h3>
+        <p>클릭하여 각 매대의 상세 데이터를 확인하세요.</p>
+        <div class="store-layout">
+            <div class="shelf" onclick="loadShelfData('A')">매대 A (스낵)</div>
+            <div class="shelf" onclick="loadShelfData('B')">매대 B (음료)</div>
+            <div class="shelf" onclick="loadShelfData('C')">매대 C (유제품)</div>
+        </div>
+    </div>
+
+    <!-- [프론트 요구사항 2] 분석 결과 보여주기 -->
+    <div class="section" id="analysis-section">
+        <h3>📊 <span id="current-shelf-name">매대 A</span> 분석 결과</h3>
+        
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>단순 감지 횟수</h3>
+                <p id="stat-detect">142회</p>
+            </div>
+            <div class="stat-card">
+                <h3>평균 체류시간</h3>
+                <p id="stat-dwell">45초</p>
+            </div>
+            <div class="stat-card">
+                <h3>통과 횟수</h3>
+                <p id="stat-pass">89회</p>
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; max-width: 600px; margin-left: auto; margin-right: auto;">
+            <!-- 동선 확률을 보여줄 차트 영역 -->
+            <canvas id="pathChart"></canvas>
+        </div>
+    </div>
+
+    <!-- [프론트 요구사항 3] LLM 인사이트 및 전진진열 버튼 -->
+    <div class="section">
+        <h3>🤖 AI 분석 및 제어</h3>
+        <div class="llm-insight">
+            <strong>LLM 인사이트:</strong> "매대 B(음료)의 체류시간이 길지만 구매 전환율이 낮습니다. 상품이 뒤로 밀려있을 가능성이 높으니 전진진열을 추천합니다."
+        </div>
+        <button class="btn-coss" onclick="triggerCOSS()">전진진열 실행 (COSS API 연동) 🚀</button>
+    </div>
+
+</div>
+
+<script>
+    // 1. 차트 그리기 (Chart.js)
+    const ctx = document.getElementById('pathChart').getContext('2d');
+    let pathChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['매대 B로 이동', '매대 C로 이동', '계산대로 이동'],
+            datasets: [{
+                label: '다음 동선 확률 (%)',
+                data: [60, 25, 15],
+                backgroundColor: ['#0d6efd', '#198754', '#ffc107']
+            }]
+        }
+    });
+
+    // 2. 매대 클릭 시 데이터 변경 (추후 백엔드 데이터와 연결될 부분)
+    function loadShelfData(shelfId) {
+        document.getElementById('current-shelf-name').innerText = '매대 ' + shelfId;
+        alert(`매대 ${shelfId}의 데이터를 백엔드에서 불러옵니다. (현재는 UI 테스트 중)`);
+        // 이곳에 나중에 fetch()나 axios를 써서 장고 백엔드 API를 호출하는 코드가 들어갑니다.
+    }
+
+    // 3. 전진진열 버튼 클릭 이벤트
+    function triggerCOSS() {
+        alert("COSS 플랫폼으로 전진진열 API 요청을 전송합니다! 🚀");
+        // 이곳에 COSS API로 POST 요청을 보내는 코드가 들어갑니다.
+    }
+</script>
+
+</body>
+</html>
