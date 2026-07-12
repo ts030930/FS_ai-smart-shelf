@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 스마트 매대 - 로그인</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .card { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 350px; text-align: center; }
+        input { width: 100%; padding: 12px; margin: 8px 0 20px; border: 1px solid #ced4da; border-radius: 5px; box-sizing: border-box; }
+        .btn { background-color: #0d6efd; color: white; border: none; padding: 15px; width: 100%; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn:hover { background-color: #0b5ed7; }
+        
+        /* 회원가입 링크 전용 스타일 추가 */
+        .signup-link { margin-top: 20px; font-size: 14px; color: #6c757d; }
+        .signup-link a { color: #0d6efd; text-decoration: none; font-weight: bold; cursor: pointer; }
+        .signup-link a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🛒 매장 관리자 로그인</h2>
+        
+        <!-- 로그인 폼 시작 -->
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.GET.next|default:'/' }}">
+            
+            <div style="text-align: left;">
+                <label>아이디</label>
+                <input type="text" name="username" required placeholder="아이디 입력">
+                
+                <label>비밀번호</label>
+                <input type="password" name="password" required placeholder="비밀번호 입력">
+            </div>
+            
+            <button type="submit" class="btn">로그인</button>
+        </form>
+        <!-- 로그인 폼 끝 -->
+        
+        <!-- 폼 바깥으로 링크를 분리하여 클릭 방해 요소를 없앴습니다 -->
+        <div class="signup-link">
+            아직 계정이 없으신가요? <a href="{% url 'signup' %}">회원가입하기</a>
+        </div>
+        
+    </div>
+</body>
+</html>

@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>AI 스마트 매대 - 초기 설정</title>
+    <style>
+        body { font-family: 'Malgun Gothic', sans-serif; background-color: #f4f7f6; padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .card { background: white; padding: 40px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); width: 100%; max-width: 500px; }
+        .form-group { margin-bottom: 20px; }
+        label { font-weight: bold; display: block; margin-bottom: 8px; }
+        input[type="number"], select { width: 100%; padding: 12px; border: 1px solid #ced4da; border-radius: 5px; box-sizing: border-box; }
+        .btn { background-color: #198754; color: white; border: none; padding: 15px; width: 100%; border-radius: 5px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .btn:hover { background-color: #157347; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2 style="text-align: center;">⚙️ 매장 초기 설정</h2>
+        
+        {% if step == 1 %}
+        <!-- Step 1: 매대 개수 입력 -->
+        <p style="text-align: center; color: #6c757d;">매장에 있는 전체 매대 개수를 숫자로 입력해주세요.</p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="step1" value="true">
+            
+            <div class="form-group">
+                <label>매대 총 개수 (개)</label>
+                <input type="number" name="shelf_count" min="1" required placeholder="예: 3">
+            </div>
+            
+            <button type="submit" class="btn">다음 단계로 ➔</button>
+        </form>
+        {% endif %}
+
+        {% if step == 2 %}
+        <!-- Step 2: 각 매대별 카테고리 지정 -->
+        <p style="text-align: center; color: #6c757d;">각 매대의 주요 진열 품목을 선택해주세요.</p>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="step2" value="true">
+            <!-- 백엔드로 다시 매대 개수를 넘겨주기 위한 숨김 데이터 -->
+            <input type="hidden" name="shelf_count" value="{{ shelf_count|length }}">
+            
+            {% for i in shelf_count %}
+            <div class="form-group">
+                <label>{{ i }}번 매대</label>
+                <select name="category_{{ i }}" required>
+                    <option value="">-- 품목을 선택하세요 --</option>
+                    <option value="라면">라면</option>
+                    <option value="FF">FF (프레시푸드)</option>
+                    <option value="빵">빵</option>
+                    <option value="과자">과자</option>
+                    <option value="음료수">음료수</option>
+                    <option value="주류">주류</option>
+                </select>
+            </div>
+            {% endfor %}
+            
+            <button type="submit" class="btn">설정 완료 및 시작하기 🎉</button>
+        </form>
+        {% endif %}
+    </div>
+</body>
+</html>
