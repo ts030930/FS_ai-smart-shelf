@@ -14,5 +14,6 @@ urlpatterns = [
     path('setup/', views.setup_store, name='setup_store'),
     path('signup/', views.signup, name='signup'),
     path('profile/', views.profile, name='profile'),
+    path('api/coss/forward-push/', views.coss_forward_push, name='coss_forward_push'),
 ]
 

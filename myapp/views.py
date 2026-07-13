@@ -3,6 +3,10 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import UserCreationForm # <-- 회원가입을 위한 도구 추가
 from django.contrib.auth import login # <-- 가입 후 자동 로그인을 위한 도구 추가
 from .models import Store, Shelf
+import json
+import time
+import requests
+from django.http import JsonResponse
 
 # @login_required는 로그인이 안 된 사용자를 로그인 창으로 튕겨냅니다.
 @login_required(login_url='/login/')
@@ -13,7 +17,15 @@ def dashboard(request):
     if not store.is_setup_complete:
         return redirect('setup_store')
     
-    return render(request, 'dashboard.html')
+    # [추가된 부분] 현재 상점(회원)에 등록된 매대 목록을 번호순으로 가져옵니다.
+    shelves = Shelf.objects.filter(store=store).order_by('shelf_number')
+    
+    # [추가된 부분] HTML 템플릿에서 사용할 수 있도록 context 딕셔너리에 담아 전달합니다.
+    context = {
+        'shelves': shelves
+    }
+    
+    return render(request, 'dashboard.html', context)
 
 @login_required(login_url='/login/')
 def setup_store(request):
@@ -73,3 +85,58 @@ def profile(request):
             return redirect('profile')
             
     return render(request, 'profile.html', {'store': store, 'shelves': shelves})
+
+def coss_forward_push(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        target = data.get("target", "")
+        
+        # 1. 타겟 AE 이름 변경 (smart_shelf_ae -> ae_fs)
+        ae_name = "ae_fs" 
+        cnt_name = f"shelf_{target}_control"
+        
+        # 2. 매뉴얼에 명시된 실제 Mobius API 엔드포인트 주소
+        url = f"https://onem2m.iotcoss.ac.kr/Mobius/{ae_name}/{cnt_name}"
+        
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json;ty=4", 
+            "X-M2M-RI": "1234",
+            
+            # 3. Origin 이름 변경 (SOrigin -> SOrigin_fs)
+            "X-M2M-Origin": "SOrigin_fs", 
+            
+            "X-API-KEY": "oEBJa3qH9kAPRnINwUCGR0UK8zJKs9rq",
+            "X-AUTH-CUSTOM-LECTURE": "LCT_20260002",
+            "X-AUTH-CUSTOM-CREATOR": "dgu2023110430"
+        }
+        
+        # 3. 전송할 데이터(cin) 구성[cite: 1]
+        payload = {
+            "m2m:cin": {
+                "con": "forward_push_start", # 실제 제어 명령값[cite: 1]
+                "lbl": ["전진진열_명령"]
+            }
+        }
+        
+        try:
+            # 4. json=payload 대신 data=json.dumps()를 사용하여 강제 헤더 덮어쓰기 방지
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            
+            # 5. 실패 시 터미널에 명확한 원인 출력
+            if not response.ok:
+                print("\n" + "="*40)
+                print("🚨 COSS API 전송 실패 🚨")
+                print(f"요청 URL: {url}")
+                print(f"상태 코드: {response.status_code}")
+                print(f"에러 메시지: {response.text}")
+                print("="*40 + "\n")
+                
+                # 프론트엔드로 에러 메시지를 함께 보냄
+                return JsonResponse({"error": response.text}, status=response.status_code)
+
+            return JsonResponse({"status": "success"}, status=response.status_code)
+            
+        except requests.exceptions.RequestException as e:
+            print(f"네트워크 에러 발생: {e}")
+            return JsonResponse({"error": "Network Error"}, status=500)

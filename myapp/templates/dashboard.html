@@ -81,7 +81,17 @@
         <div class="llm-insight">
             <strong>LLM 인사이트:</strong> "매대 B(음료)의 체류시간이 길지만 구매 전환율이 낮습니다. 상품이 뒤로 밀려있을 가능성이 높으니 전진진열을 추천합니다."
         </div>
-        <button class="btn-coss" onclick="triggerCOSS()">전진진열 실행 (COSS API 연동) 🚀</button>
+        <!-- 개별 매대 제어 버튼 (동적 렌더링) -->
+<div style="display: flex; gap: 10px; flex-wrap: wrap; flex-direction: column;">
+    {% for shelf in shelves %}
+        <!-- id에 고유한 매대 번호를 부여하고, onclick 인자로도 넘겨줍니다 -->
+        <button class="btn-coss" id="btn-coss-{{ shelf.shelf_number }}" onclick="triggerCOSS('{{ shelf.shelf_number }}')">
+            매대 {{ shelf.shelf_number }} ({{ shelf.category }}) 전진진열 🚀
+        </button>
+    {% empty %}
+        <p style="color: #6c757d; font-size: 14px;">등록된 매대가 없습니다.</p>
+    {% endfor %}
+</div>
     </div>
 
 </div>
@@ -108,11 +118,42 @@
         // 이곳에 나중에 fetch()나 axios를 써서 장고 백엔드 API를 호출하는 코드가 들어갑니다.
     }
 
-    // 3. 전진진열 버튼 클릭 이벤트
-    function triggerCOSS() {
-        alert("COSS 플랫폼으로 전진진열 API 요청을 전송합니다! 🚀");
-        // 이곳에 COSS API로 POST 요청을 보내는 코드가 들어갑니다.
+    // 3. 전진진열 버튼 클릭 이벤트 (개별 매대 제어)
+async function triggerCOSS(targetShelf) {
+    const btn = document.getElementById(`btn-coss-${targetShelf}`);
+    const originalText = btn.innerText;
+    
+    // 버튼 상태 변경 (로딩 중)
+    btn.innerText = "COSS 플랫폼에 제어 신호 전송 중...";
+    btn.disabled = true;
+
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
+    try {
+        const response = await fetch('/api/coss/forward-push/', {
+            method: 'POST',
+            headers: {  
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            // 백엔드로 어떤 매대인지 번호 전송
+            body: JSON.stringify({ target: targetShelf })
+        });
+
+        if (response.ok) {
+            alert(`매대 ${targetShelf}에 전진진열 명령을 성공적으로 전송했습니다!`);
+        } else {
+            alert(`매대 ${targetShelf} 명령 전송 실패`);
+        }
+    } catch (error) {
+        console.error("Network Error:", error);
+        alert("네트워크 오류가 발생했습니다. 장고 서버 연결 상태를 확인하세요.");
+    } finally {
+        // 특정 버튼의 상태만 원상 복구
+        btn.innerText = originalText;
+        btn.disabled = false;
     }
+}
 </script>
 
 </body>
