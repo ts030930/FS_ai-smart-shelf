@@ -25,6 +25,37 @@
         .btn-coss { background-color: #198754; color: white; border: none; padding: 15px 30px; font-size: 18px; border-radius: 8px; cursor: pointer; width: 100%; font-weight: bold; }
         .btn-coss:hover { background-color: #157347; }
         .llm-insight { background: #fff3cd; color: #856404; padding: 15px; border-radius: 8px; margin-bottom: 15px; border: 1px solid #ffeeba; }
+        .btn-ai { 
+    background-color: #0d6efd; 
+    color: white; 
+    border: none; 
+    padding: 15px 30px; 
+    font-size: 18px; 
+    border-radius: 8px; 
+    cursor: pointer; 
+    width: 100%; 
+    font-weight: bold; 
+    margin-bottom: 15px; 
+    transition: 0.3s; 
+}
+.btn-ai:hover { background-color: #0b5ed7; }
+.btn-ai:disabled { background-color: #6c757d; cursor: not-allowed; }
+.btn-result {
+    display: block;
+    background-color: #6c757d; /* 차분한 회색 */
+    color: white;
+    text-align: center;
+    text-decoration: none;
+    padding: 15px 30px;
+    font-size: 18px;
+    border-radius: 8px;
+    width: 100%;
+    font-weight: bold;
+    margin-bottom: 15px;
+    box-sizing: border-box;
+    transition: 0.3s;
+}
+.btn-result:hover { background-color: #5c636a; color: white; }
     </style>
 </head>
 <body>
@@ -76,23 +107,36 @@
     </div>
 
     <!-- [프론트 요구사항 3] LLM 인사이트 및 전진진열 버튼 -->
-    <div class="section">
-        <h3>🤖 AI 분석 및 제어</h3>
-        <div class="llm-insight">
-            <strong>LLM 인사이트:</strong> "매대 B(음료)의 체류시간이 길지만 구매 전환율이 낮습니다. 상품이 뒤로 밀려있을 가능성이 높으니 전진진열을 추천합니다."
-        </div>
-        <!-- 개별 매대 제어 버튼 (동적 렌더링) -->
-<div style="display: flex; gap: 10px; flex-wrap: wrap; flex-direction: column;">
-    {% for shelf in shelves %}
-        <!-- id에 고유한 매대 번호를 부여하고, onclick 인자로도 넘겨줍니다 -->
-        <button class="btn-coss" id="btn-coss-{{ shelf.shelf_number }}" onclick="triggerCOSS('{{ shelf.shelf_number }}')">
-            매대 {{ shelf.shelf_number }} ({{ shelf.category }}) 전진진열 🚀
-        </button>
-    {% empty %}
-        <p style="color: #6c757d; font-size: 14px;">등록된 매대가 없습니다.</p>
-    {% endfor %}
-</div>
+<div class="section">
+    <h3>🤖 AI 분석 및 제어</h3>
+    
+    <!-- 1. AI 분석 요청 버튼 -->
+    <button class="btn-ai" id="btn-ai-analyze" onclick="triggerAIAnalysis()">
+        ✨ AI 매대 상태 분석 요청
+    </button>
+
+    <!-- 2. 상세 결과 확인 버튼 (새 HTML로 이동) -->
+    <!-- urls.py에 설정한 name='analysis_result' 경로로 이동합니다. -->
+    <a href="{% url 'analysis_result' %}" class="btn-result">
+        📈 상세 결과 확인하기
+    </a>
+
+    <!-- 3. LLM 인사이트 결과 출력 영역 -->
+    <div class="llm-insight" id="llm-insight-box">
+        <strong>LLM 인사이트:</strong> 대기 중... AI 분석 버튼을 눌러주세요.
     </div>
+
+    <!-- 4. 개별 매대 제어 버튼 -->
+    <div style="display: flex; gap: 10px; flex-wrap: wrap; flex-direction: column;">
+        {% for shelf in shelves %}
+            <button class="btn-coss" id="btn-coss-{{ shelf.shelf_number }}" onclick="triggerCOSS('{{ shelf.shelf_number }}')">
+                매대 {{ shelf.shelf_number }} ({{ shelf.category }}) 전진진열 🚀
+            </button>
+        {% empty %}
+            <p style="color: #6c757d; font-size: 14px;">등록된 매대가 없습니다.</p>
+        {% endfor %}
+    </div>
+</div>
 
 </div>
 
@@ -150,6 +194,56 @@ async function triggerCOSS(targetShelf) {
         alert("네트워크 오류가 발생했습니다. 장고 서버 연결 상태를 확인하세요.");
     } finally {
         // 특정 버튼의 상태만 원상 복구
+        btn.innerText = originalText;
+        btn.disabled = false;
+    }
+}
+
+
+// 4. AI 분석 요청 버튼 클릭 이벤트 (LLM API 연동 기반)
+async function triggerAIAnalysis() {
+    const btn = document.getElementById('btn-ai-analyze');
+    const insightBox = document.getElementById('llm-insight-box');
+    const originalText = btn.innerText;
+
+    // 현재 선택된 매대 이름 가져오기 (예: "매대 A")
+    const currentShelf = document.getElementById('current-shelf-name').innerText;
+
+    // 버튼 상태 및 UI 변경 (로딩 중)
+    btn.innerText = "⏳ AI가 데이터를 분석 중입니다...";
+    btn.disabled = true;
+    insightBox.innerHTML = `<strong>LLM 인사이트:</strong> ${currentShelf}의 통계 데이터를 분석하고 있습니다...`;
+
+    // CSRF 토큰 가져오기 (장고 POST 요청 필수)
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]') 
+                        ? document.querySelector('[name=csrfmiddlewaretoken]').value 
+                        : '';
+
+    try {
+        // 추후 장고 백엔드에 만들 LLM 연동 API URL
+        const response = await fetch('/api/llm/analyze/', {
+            method: 'POST',
+            headers: {  
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            // 현재 활성화된 매대 정보를 서버로 전송
+            body: JSON.stringify({ target_shelf: currentShelf })
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+            // 백엔드(LLM)에서 반환받은 텍스트를 화면에 출력
+            // 예: data.insight = "매대 B의 체류시간이 길지만..."
+            insightBox.innerHTML = `<strong>LLM 인사이트:</strong> "${data.insight}"`;
+        } else {
+            insightBox.innerHTML = `<strong>LLM 인사이트:</strong> ❌ 분석 실패. 서버 연동을 확인해주세요.`;
+        }
+    } catch (error) {
+        console.error("LLM Analysis Error:", error);
+        insightBox.innerHTML = `<strong>LLM 인사이트:</strong> ❌ 네트워크 오류가 발생했습니다.`;
+    } finally {
+        // 버튼 상태 원상 복구
         btn.innerText = originalText;
         btn.disabled = false;
     }

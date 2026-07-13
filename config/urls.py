@@ -15,5 +15,10 @@ urlpatterns = [
     path('signup/', views.signup, name='signup'),
     path('profile/', views.profile, name='profile'),
     path('api/coss/forward-push/', views.coss_forward_push, name='coss_forward_push'),
+    # LLM 분석 요청 API URL (프론트엔드 fetch 함수에서 호출하는 주소)
+    path('api/llm/analyze/', views.llm_analyze, name='llm_analyze'),
+    
+    # 결과 확인 페이지 이동 URL
+    path('analysis/result/', views.analysis_result_page, name='analysis_result'),
 ]
 

@@ -6,7 +6,9 @@ from .models import Store, Shelf
 import json
 import time
 import requests
+import json
 from django.http import JsonResponse
+from django.shortcuts import render
 
 # @login_required는 로그인이 안 된 사용자를 로그인 창으로 튕겨냅니다.
 @login_required(login_url='/login/')
@@ -97,7 +99,7 @@ def coss_forward_push(request):
         
         # 2. 매뉴얼에 명시된 실제 Mobius API 엔드포인트 주소
         url = f"https://onem2m.iotcoss.ac.kr/Mobius/{ae_name}/{cnt_name}"
-        
+            
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json;ty=4", 
@@ -140,3 +142,33 @@ def coss_forward_push(request):
         except requests.exceptions.RequestException as e:
             print(f"네트워크 에러 발생: {e}")
             return JsonResponse({"error": "Network Error"}, status=500)
+        
+
+# 1. LLM 분석을 처리하는 API 뷰 (비동기 통신용)
+def llm_analyze(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            target_shelf = data.get('target_shelf', '알 수 없는 매대')
+            
+            # TODO: 1. DB에서 해당 매대의 통계 데이터 조회
+            # TODO: 2. OpenAI / Claude API 호출 및 프롬프트 전송
+            # TODO: 3. LLM의 답변 수신
+            
+            # 임시 더미 데이터 (LLM 응답 시뮬레이션)
+            mock_llm_response = f"분석 완료! {target_shelf}의 체류시간이 길지만 구매 전환율이 낮습니다. 상품이 뒤로 밀려있을 가능성이 높으니 전진진열을 추천합니다."
+            
+            return JsonResponse({"insight": mock_llm_response}, status=200)
+        
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+            
+    return JsonResponse({"error": "잘못된 요청입니다."}, status=405)
+
+# 2. 결과 확인 페이지 렌더링 뷰
+def analysis_result_page(request):
+    # TODO: 결과 페이지에 보여줄 데이터를 딕셔너리 형태로 context에 담아 템플릿으로 전달합니다.
+    context = {
+        'page_title': '상세 분석 결과'
+    }
+    return render(request, 'analysis_result.html', context)
