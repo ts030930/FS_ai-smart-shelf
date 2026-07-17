@@ -172,3 +172,113 @@ def analysis_result_page(request):
         'page_title': '상세 분석 결과'
     }
     return render(request, 'analysis_result.html', context)
+
+#@login_required(login_url='/login/')
+def setup_sensor_subscription(request):
+    try:
+        my_django_url = "http://127.0.0.1:8000/sensor-receive/"
+        
+        ae_name = "ae_fs"
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json;ty=23", 
+            "X-M2M-RI": "sub_req_multi",
+            "X-M2M-Origin": "SOrigin_fs", 
+            "X-API-KEY": "oEBJa3qH9kAPRnINwUCGR0UK8zJKs9rq",
+            "X-AUTH-CUSTOM-LECTURE": "LCT_20260002",
+            "X-AUTH-CUSTOM-CREATOR": "dgu2023110430"
+        }
+
+        total_shelves = [1, 2, 3, 4]#되면 수정하기
+        success_count = 0
+
+        for num in total_shelves:
+            cnt_name = f"shelf_{num}_sensor" 
+            url = f"https://onem2m.iotcoss.ac.kr/Mobius/{ae_name}/{cnt_name}"
+            
+            payload = {
+                "m2m:sub": {
+                    "rn": f"django_sub_shelf_{num}", 
+                    "nu": [my_django_url],
+                    "nct": 2,
+                    "enc": {"net": [3]}
+                }
+            }
+            
+            response = requests.post(url, headers=headers, data=json.dumps(payload))
+            if response.status_code in [201, 409]: # 성공했거나 이미 등록된 경우
+                success_count += 1
+                
+        return JsonResponse({
+            "status": "success", 
+            "message": f"총 {len(total_shelves)}개 매대 중 {success_count}개 구독 연동 성공!"
+        }, status=200)
+            
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+current_shelves_data = {
+    "S_01": {"dwell_time_seconds": 0, "timestamp": None, "count":0,"passcount":0},
+    "S_02": {"dwell_time_seconds": 0, "timestamp": None, "count":0,"passcount":0},
+    "S_03": {"dwell_time_seconds": 0, "timestamp": None, "count":0,"passcount":0},
+}
+@csrf_exempt
+def receive_sensor_data(request):
+    global current_shelves_data
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body)
+            SensorLog.objects.create(
+                sensor_id=payload.get("sensor_id"),
+                dwell_time_seconds=payload.get("dwell_time_seconds"),
+                timestamp=payload.get("timestamp")
+            )
+            sensor_id = payload.get("sensor_id") 
+            dwell_time = payload.get("dwell_time_seconds")
+            timestamp = payload.get("timestamp")
+            
+            # 2. 해당 센서 ID가 우리 매대 목록에 있다면 그 칸에만 덮어쓰기
+            if sensor_id in current_shelves_data:
+                current_shelves_data[sensor_id]["dwell_time_seconds"] = dwell_time
+                current_shelves_data[sensor_id]["timestamp"] = timestamp
+                if dwell_time>3:
+                    current_shelves_data[sensor_id]["count"]+=1
+                else:
+                    current_shelves_data[sensor_id]["passcount"]+=1
+            return JsonResponse({"status": "success"}, status=200)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+def get_movement_probability(request):
+
+    # 1. DB에서 시간순으로 로그 긁어오기
+    logs = SensorLog.objects.all().order_by('timestamp')
+    
+    if logs.count() < 2:
+        return JsonResponse({"error": "동선을 계산하기 위한 로그 데이터가 부족합니다. (최소 2개 필요)"}, status=400)
+    
+    # 2. 장고 데이터를 판다스 데이터프레임(엑셀 형태)으로 변환
+    df = pd.DataFrame(list(logs.values('sensor_id', 'timestamp')))
+    
+    # 3. 마르코프 체인 적용: 현재 센서 바로 다음에 등장한 센서 매칭하기
+    df['next_sensor'] = df['sensor_id'].shift(-1)
+    
+    # 마지막 행은 다음 동선이 없으므로 제거
+    df = df.dropna(subset=['next_sensor'])
+    
+    # 4. 교차 표(Crosstab)를 생성하고 행(Row) 기준 확률(normalize='index') 계산
+    # 예: S_01에 있던 사람들 중 각 센서로 이동한 비율 계산
+    try:
+        transition_matrix = pd.crosstab(df['sensor_id'], df['next_sensor'], normalize='index')
+        
+        # 5. 프론트엔드(Vue)나 차트 라이브러리가 읽기 좋은 딕셔너리 형태로 변환
+        # 결과 예시: {"S_01": {"S_02": 0.7, "S_03": 0.3}, "S_02": ...}
+        result_matrix = transition_matrix.to_dict(orient='index')
+        
+        return JsonResponse({
+            "status": "success",
+            "description": "각 매대(Key)에서 다음 매대로 이동할 확률 데이터입니다.",
+            "matrix": result_matrix
+        }, status=200)
+        
+    except Exception as e:
+        return JsonResponse({"status": "error", "message": str(e)}, status=500)
