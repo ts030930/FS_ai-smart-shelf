@@ -20,5 +20,9 @@ urlpatterns = [
     
     # 결과 확인 페이지 이동 URL
     path('analysis/result/', views.analysis_result_page, name='analysis_result'),
+    path('sensor/',views.receive_sensor_data,name='receive_sensor_data'),
+
+    path('subscription',views.setup_sensor_subscription,name='setup_sensor_subscription'),
+    path('analysis/route',views.get_movement_probability,name='get_movement_probability'),
 ]
 
