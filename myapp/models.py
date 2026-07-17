@@ -20,3 +20,9 @@ class Shelf(models.Model):
     store = models.ForeignKey(Store, on_delete=models.CASCADE)
     shelf_number = models.IntegerField() # 1번, 2번 매대...
     category = models.CharField(max_length=20, choices=CATEGORY_CHOICES)
+
+class SensorLog(models.Model):
+    sensor_id = models.CharField(max_length=10)       
+    dwell_time_seconds = models.IntegerField()       
+    timestamp = models.DateTimeField()                 
+    created_at = models.DateTimeField(auto_now_add=True)
