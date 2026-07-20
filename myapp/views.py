@@ -9,6 +9,9 @@ import requests
 import json
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.views.decorators.csrf import csrf_exempt
+from openai import OpenAI
+import os
 
 # @login_required는 로그인이 안 된 사용자를 로그인 창으로 튕겨냅니다.
 @login_required(login_url='/login/')
@@ -147,23 +150,43 @@ def coss_forward_push(request):
 # 1. LLM 분석을 처리하는 API 뷰 (비동기 통신용)
 def llm_analyze(request):
     if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            target_shelf = data.get('target_shelf', '알 수 없는 매대')
+            try:
+                # 1. 현재 로그인한 유저의 점포 정보 가져오기
+                store = Store.objects.get(user=request.user)
+                
+                # 2. 마르코프 체인 확률 행렬 계산 (기존 get_movement_probability 로직 활용)
+                logs = SensorLog.objects.all().order_by('timestamp')
+                result_matrix = {}
+                if logs.count() >= 2:
+                    df = pd.DataFrame(list(logs.values('sensor_id', 'timestamp')))
+                    df['next_sensor'] = df['sensor_id'].shift(-1)
+                    df = df.dropna(subset=['next_sensor'])
+                    try:
+                        transition_matrix = pd.crosstab(df['sensor_id'], df['next_sensor'], normalize='index')
+                        result_matrix = transition_matrix.to_dict(orient='index')
+                    except:
+                        result_matrix = {} # 에러 시 빈 값으로 진행
+
+                # 3. 현재 시간(시) 구하기
+                from datetime import datetime
+                current_hour = datetime.now().hour
+                
+                # 4. ⭐ 맨 밑에 만든 GPT 분석 함수 호출하기!
+                # global current_shelves_data 변수를 그대로 인자로 넘겨줍니다.
+                ai_report = analyze_shelf_data_with_gpt(
+                    store=store, 
+                    current_shelves_data=current_shelves_data, 
+                    result_matrix=result_matrix, 
+                    current_hour=current_hour
+                )
+                
+                # 5. GPT가 돌려준 JSON 분석 리포트를 그대로 프론트엔드에 반환
+                return JsonResponse({"status": "success", "report": ai_report}, status=200)
             
-            # TODO: 1. DB에서 해당 매대의 통계 데이터 조회
-            # TODO: 2. OpenAI / Claude API 호출 및 프롬프트 전송
-            # TODO: 3. LLM의 답변 수신
-            
-            # 임시 더미 데이터 (LLM 응답 시뮬레이션)
-            mock_llm_response = f"분석 완료! {target_shelf}의 체류시간이 길지만 구매 전환율이 낮습니다. 상품이 뒤로 밀려있을 가능성이 높으니 전진진열을 추천합니다."
-            
-            return JsonResponse({"insight": mock_llm_response}, status=200)
-        
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
-            
-    return JsonResponse({"error": "잘못된 요청입니다."}, status=405)
+            except Exception as e:
+                return JsonResponse({"error": str(e)}, status=400)
+                
+    return JsonResponse({"error": "잘못된 요청입니다. POST 메서드만 지원합니다."}, status=405)
 
 # 2. 결과 확인 페이지 렌더링 뷰
 def analysis_result_page(request):
@@ -238,7 +261,7 @@ def receive_sensor_data(request):
             
             # 2. 해당 센서 ID가 우리 매대 목록에 있다면 그 칸에만 덮어쓰기
             if sensor_id in current_shelves_data:
-                current_shelves_data[sensor_id]["dwell_time_seconds"] = dwell_time
+                current_shelves_data[sensor_id]["dwell_time_seconds"] += dwell_time
                 current_shelves_data[sensor_id]["timestamp"] = timestamp
                 if dwell_time>3:
                     current_shelves_data[sensor_id]["count"]+=1
@@ -282,3 +305,92 @@ def get_movement_probability(request):
         
     except Exception as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=500)
+
+def analyze_shelf_data_with_gpt(store, current_shelves_data, result_matrix, current_hour):
+    # 1. OpenAI 클라이언트 초기화
+    client = OpenAI()
+    
+    # 2. 매대 카테고리 정보 동적 조회
+    shelves = Shelf.objects.filter(store=store).order_by('shelf_number')
+    shelf_mapping = {}
+    for shelf in shelves:
+        shelf_key = f"S_{str(shelf.shelf_number).zfill(2)}"
+        shelf_mapping[shelf_key] = f"{shelf.category} 매대"
+        
+    if not shelf_mapping:
+        for key in current_shelves_data.keys():
+            shelf_mapping[key] = f"미등록({key}) 매대"
+
+    # 💡 [추가] DB에서 모든 센서 로그를 시간순으로 조회하여 포맷팅
+    raw_logs = SensorLog.objects.all().order_by('timestamp')
+    logs_data = [
+        {
+            "sensor_id": log.sensor_id,
+            "dwell_time_seconds": log.dwell_time_seconds,
+            "timestamp": log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else ""
+        }
+        for log in raw_logs
+    ]
+
+    # 💡 프롬프트 엔지니어링: 기존 양식 유지 + RAW 로그 데이터 추가 주입
+    prompt = f"""
+    당신은 데이터 기반 데이터 분석가이자 리테일 매장 관리 전문가입니다.
+    현재 시간은 {current_hour}시입니다. 다음 대형마트 스마트 매대 데이터를 분석하여 매장 최적화 솔루션을 제공하세요.
+
+    [매대 ID 설명]
+    {json.dumps(shelf_mapping, ensure_ascii=False, indent=2)}
+
+    [분석 대상 데이터]
+    1. 매대별 실시간 고객 행동 정보 (현재 시간대 누적):
+    {json.dumps(current_shelves_data, ensure_ascii=False, indent=2)}
+
+    2. 마르코프 체인 기반 고객 매대 이동 확률 행렬 (Result Matrix):
+    {json.dumps(result_matrix, ensure_ascii=False, indent=2)}
+    * 설명: 특정 매대(Row)에서 물건을 본 고객이 다음으로 어떤 매대(Column)로 갈지 확률을 나타냄.
+
+    3. 전체 센서 로그 기록 (Raw Logs - 시간순):
+    {json.dumps(logs_data, ensure_ascii=False, indent=2)}
+    * 설명: 매장에 쌓인 개별 센서 감지 원본 데이터입니다. 시간대별 유동량 변화 추이를 분석하는 데 활용하세요.
+
+    [상황별 분석 가이드라인]
+    - 통행 병목 현상 해소: 특정 매대의 passcount(유동량)는 매우 높은데 count(관심고객) 및 dwell_time_seconds(체류시간)가 극도로 낮다면, 통로 유동성에 방해가 되거나 시인성이 떨어지는 병목/소외 구간입니다. 이동 확률 Matrix를 보고 트래픽이 밀리는 정체 경로를 찾아내어 동선 분산 방안을 제안하세요.
+    - 시간별 체류시간 및 할인 추천: 현재 시간({current_hour}시)의 특성을 고려하십시오. 다른 매대에 비해 체류시간이나 관심고객 수가 저조한 매대를 타겟팅하여, 고객을 붙잡을 수 있는 '타임 세일/마감 할인 마케팅 타겟 매대' 및 '적정 할인율'을 제안하세요.
+    - 하드웨어 가동 명령 (전진진열 모터): 체류시간이 짧거나 관심도가 떨어진 매대 중, 상품 시인성 개선이 시급한 매대를 딱 하나 지정하여 전진진열 모터 작동 명령(True/False)을 내리세요.
+
+    [출력 포맷 규칙]
+    반드시 아래의 JSON 구조와 완벽히 일치하는 데이터만 반환하세요. 코드 블록(```json)을 사용하지 말고 순수 JSON 문자열만 출력해야 합니다.
+    {{
+        "bottleneck_analysis": "병목 구간 진단 및 동선 분산 해법 기술 (한국어)",
+        "time_based_marketing": {{
+            "target_shelf_id": "할인이 필요한 매대 ID (예: S_02)",
+            "reason": "현재 시간대 및 데이터 기준 타겟 선정 이유",
+            "recommended_discount_rate": "추천 할인율 (예: 15%)",
+            "strategy_detail": "구체적인 타임세일 방식 제안"
+        }},
+        "general_marketing_solutions": [
+            "연관 진열 제안 1",
+            "프로모션 제안 2"
+        ],
+        "hardware_motor_control": {{
+            "trigger_shelf_id": "모터 제어가 필요한 매대 ID",
+            "motor_active": true
+        }}
+    }}
+    """
+
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a data-driven retail management system. You always respond in strict JSON format."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"}, 
+            temperature=0.2 
+        )
+        
+        result_json = json.loads(response.choices[0].message.content)
+        return result_json
+
+    except Exception as e:
+        return {"error": f"AI 분석 실패: {str(e)}"}
